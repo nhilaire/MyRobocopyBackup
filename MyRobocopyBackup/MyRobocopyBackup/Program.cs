@@ -19,6 +19,8 @@ var serviceProvider = new ServiceCollection()
     .AddTransient(_ => backupConfiguration)
     .AddTransient<IFileLogger, FileLogger>()
     .AddTransient<IMailSender, MailSender>()
+    .AddTransient<RobocopyRunner>()
+    .AddTransient<RunControl>()
     .AddTransient<BackupRunner>()
     .BuildServiceProvider();
 

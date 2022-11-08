@@ -1,5 +1,4 @@
-﻿using System.Diagnostics;
-using System.Text;
+﻿using System.Text;
 
 namespace MyRobocopyBackup
 {
@@ -10,12 +9,17 @@ namespace MyRobocopyBackup
         private readonly IMailSender _mailSender;
         private readonly IFileLogger _fileLogger;
         private readonly BackupConfiguration _backupConfiguration;
+        private readonly RobocopyRunner _robocopyRunner;
+        private readonly RunControl _runControl;
 
-        public BackupRunner(IMailSender mailSender, IFileLogger fileLogger, BackupConfiguration backupConfiguration)
+        public BackupRunner(IMailSender mailSender, IFileLogger fileLogger, BackupConfiguration backupConfiguration,
+            RobocopyRunner robocopyRunner, RunControl runControl)
         {
             _mailSender = mailSender;
             _fileLogger = fileLogger;
             _backupConfiguration = backupConfiguration;
+            _robocopyRunner = robocopyRunner;
+            _runControl = runControl;
         }
 
         public async Task Run()
@@ -23,17 +27,22 @@ namespace MyRobocopyBackup
             var trace = new StringBuilder();
             try
             {
+                if (_runControl.HasRunFivesTimesWithoutSuccess())
+                {
+                    _runControl.Warn();
+                }
+
                 if (CanReachBackup())
                 {
                     var paths = GetShuffledPath();
                     foreach (var currentPath in paths)
                     {
-                        var commandLine = BuildCommandLine(currentPath);
+                        var commandLine = _robocopyRunner.BuildCommandLine(currentPath);
                         await _fileLogger.Log($"Start copy for {currentPath.PathSource} to {currentPath.PathDestination}");
                         trace.Append($"Start copy for {currentPath.PathSource} to {currentPath.PathDestination} ... <br/>");
                         try
                         {
-                            RunRobocopy(trace, commandLine);
+                            _robocopyRunner.RunRobocopy(trace, commandLine);
                         }
                         catch (Exception ex)
                         {
@@ -42,11 +51,13 @@ namespace MyRobocopyBackup
                         }
                     }
                     await _fileLogger.Log("Ended without errors");
+                    _runControl.Reset();
                 }
                 else
                 {
                     trace.Append($"Unable to reach test file {_backupConfiguration.TestFilePath}");
                     await _fileLogger.Log($"Unable to reach test file {_backupConfiguration.TestFilePath}");
+                    _runControl.IncrementFailure();
                 }
 
             }
@@ -54,33 +65,12 @@ namespace MyRobocopyBackup
             {
                 trace.Append($"Global error {ex}");
                 await _fileLogger.Log($"Global error {ex}");
+                _runControl.IncrementFailure();
             }
 
             trace.Append(RoboDoc);
 
-            _mailSender.SendMail("End of data backup", trace.ToString());
-        }
-
-        private static void RunRobocopy(StringBuilder trace, string commandLine)
-        {
-            var process = Process.Start("robocopy", commandLine);
-            process.WaitForExit();
-            int result = process.ExitCode;
-            trace.Append($"Process ended with return code {result} <br/><br/>");
-            Console.WriteLine($"Process ended with return code {result}");
-        }
-
-        private string BuildCommandLine(PathConfig currentPath)
-        {
-            string param = $"{currentPath.PathSource} {currentPath.PathDestination} {_backupConfiguration.CommandLine}";
-            if (currentPath.Exclusions != null)
-            {
-                foreach (var exclusion in currentPath.Exclusions)
-                {
-                    param += $" /XD \"{exclusion}\"";
-                }
-            }
-            return param;
+            _mailSender.SendMail($"End of data backup of {_backupConfiguration.Whom}", trace.ToString());
         }
 
         private List<PathConfig> GetShuffledPath()

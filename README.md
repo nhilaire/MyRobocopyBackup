@@ -8,3 +8,4 @@ Some things to notice
 
  - **Mail sending** is done with my Gmail account. You just have to activate two factor authentication and create a password here https://myaccount.google.com/apppasswords
  - I check that my external is available by looking at a specific file (see BackupConfig:TestFilePath)
+ - I want to be alerted if the process can't run 5 times
